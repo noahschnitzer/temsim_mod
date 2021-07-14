@@ -136,12 +136,6 @@ ANY OTHER PROGRAM).
   add pPMAXDET,pPMINDET params for azim. STEM detect. angles (seg. detector)
        12-may-2018 ejk
   remove sourceFWHM question because it is not practical 20-jan-2019 ejk
-  force multiMode=1 with abbError() (which makes more sense)
-      and add more info output in 1D mode 20-apr-2019 ejk
-  fix bug with init Rng in abbError() mode 21-apr-2019 ejk
-  NOTE: confocal values changed by small amount after fixing small error
-     in xpos calculation in slicelib/freqn()  21-aug-2019 ejk
-  
 */
 
 #include <cstdio>  /* ANSI C libraries used */
@@ -163,13 +157,12 @@ using namespace std;
 #include "floatTIFF.hpp"  // file I/O routines in TIFF format
 
 //  use only one;  the calculation part
-//#include "autostem_cuda.hpp"   // header for cuda nvcc version of this class
-#include "autostem_probe.hpp"        // header for C++ version of this class
+#include "autostem_cuda.hpp"   // header for cuda nvcc version of this class
+//#include "autostem.hpp"        // header for C++ version of this class
 
 #define MANY_ABERR      //  define to include many aberrations
 
-//
-#define USE_OPENMP      /* define to use openMP */
+//#define USE_OPENMP      /* define to use openMP */
 
 #ifdef USE_OPENMP
 #include <omp.h>
@@ -184,11 +177,11 @@ int main( int argc, char *argv[ ] )
 {  
     string filein, fileout, fileoutpre, description, cmode, cline,
         pacbedFile;
-    const string version = "21-aug-2019 (ejk)";
+    const string version = "30-jan-2019 (ejk)";
 
-    int miz, ix, iy, i, idetect, nxout, nyout,
+    int ix, iy, i, idetect, nxout, nyout,
         ncellx, ncelly, ncellz, nwobble, ndetect, ip, nThick, it,
-        done, status, multiMode; // N.S.
+        done, status, multiMode;
     int nx, ny, nxprobe, nyprobe, nslice, natom;
 
     int l1d=0, lwobble=0, lxzimage=0, labErr=0, NPARAM, np, echo;
@@ -207,7 +200,7 @@ int main( int argc, char *argv[ ] )
     float  **rmin, **rmax;
 
     float zmin, zmax;
-    float ***pacbedPix;        //  to save position averaged CBED //N.S.
+    float **pacbedPix;        //  to save position averaged CBED 
 
     double dxp, dyp;
 
@@ -235,7 +228,7 @@ int main( int argc, char *argv[ ] )
 /* start by announcing version etc */
 
     cout << "autostem (ADF,confocal,segmented) version dated " << version  << endl;
-    cout << "Copyright (C) 1998-2019 Earl J. Kirkland"  << endl;
+    cout << "Copyright (C) 1998-2018 Earl J. Kirkland"  << endl;
     cout <<  "This program is provided AS-IS with ABSOLUTELY NO WARRANTY\n "
             << " under the GNU general public license\n"  << endl;
 
@@ -462,6 +455,14 @@ int main( int argc, char *argv[ ] )
         cout << "Type number of configurations to average over:" << endl;
         cin >> nwobble;
         if( nwobble < 1 ) nwobble = 1;
+        ltime = (long) time( NULL );
+        iseed = (unsigned) ltime;
+        if( ltime == -1 ) {
+            cout << "Type initial seed for random number generator:" << endl;
+            cin >> iseed;
+        } else {
+            cout << "Random number seed initialized to " << iseed << endl;
+        }
         //  source size doesn't work here - requires too many MC samples
         //  but leave part here so I don't forget 30-jan-2019 ejk
         //cout << "Type source size (FWHM in Ang.):" << endl;
@@ -472,17 +473,6 @@ int main( int argc, char *argv[ ] )
         nwobble = 1;
         sourceFWHM = 0.0;
         iseed = 0;
-    }
-
-    if( (TRUE ==lwobble ) || (TRUE  == labErr) ) {  // for random numbers
-        ltime = (long) time( NULL );
-        iseed = (unsigned) ltime;
-        if( ltime == -1 ) {
-            cout << "Type initial seed for random number generator:" << endl;
-            cin >> iseed;
-        } else {
-            cout << "Random number seed initialized to " << iseed << endl;
-        }
     }
 
     timer = cputim();   /* get initial CPU time */
@@ -600,11 +590,7 @@ int main( int argc, char *argv[ ] )
 
     np = 22;  // number of abberations to add tuning errors (22 for 2-5th order)
     echo = 1;  // print some information
-    if( TRUE == labErr ) {
-        ast.abbError( param, np, NPARAM, iseed, echo );
-        multiMode = 1;
-        cout << "add random pi/4 aberration tuning errors" << endl;
-    }
+    if( 1 == labErr ) ast.abbError( param, np, NPARAM, iseed, echo );
 
     ast.CountBeams( param, nbeamp, nbeampo, res, thetamax );
 
@@ -635,10 +621,9 @@ int main( int argc, char *argv[ ] )
            cout << "Cannot do pos. aver. CBED in 1d, exit...." << endl;
            exit( 0 );
         }
-        pacbedPix = new3D<float>(nThick*nyout, nxprobe, nyprobe, "pacbedPix" ); // N.S.
-        // prev did pacbedPix = (float***) malloc3D(nThick*nyout, nxprobe, nyprobe, sizeof(float), "pacbedPix" );
-        for( miz=0; miz<nThick*nyout; miz++) for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
-                pacbedPix[miz][ix][iy] = 0; // N.S.
+        pacbedPix = new2D<float>( nxprobe, nyprobe, "pacbedPix" );
+        for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
+                pacbedPix[ix][iy] = 0;
     } else pacbedPix = NULL;
 
     //   set autostem modes
@@ -704,42 +689,39 @@ int main( int argc, char *argv[ ] )
        fp << "C   output of autostem version " << version << endl;
        fp << "C" << endl;
        fp << "C   nslice= " << nslice << endl;
-       fp << "C deltaz= " << deltaz << ", file in= " << filein  << endl;
-       fp << "C V0= "<< keV <<", Cs3= "<< Cs3 <<", Cs5= "<< Cs5 <<", df= "<< df << endl;
-       fp << "C Apert= " << apert1*1000.0 << " mrad to " << apert2*1000.0 << " mrad" << endl;
+       fp << "deltaz= " << deltaz << ", file in= " << filein  << endl;
+       fp << "V0= "<< keV <<", Cs3= "<< Cs3 <<", Cs5= "<< Cs5 <<", df= "<< df << endl;
+       fp << "Apert= " << apert1*1000.0 << " mrad to " << apert2*1000.0 << " mrad" << endl;
        if( doConfocal == TRUE ) {
-          fp << "C confocal lens Cs3= "<< Cs3C << ", Cs5= " << Cs5C << ", df= " << dfC << endl;
-          fp << "C confocal lens apert= " << apert1C << " mrad to " << apert2C << " mrad" << endl;
-          fp << "C confocal dfa2C= "<< dfa2C << ", dfa2phiC= " << dfa2phiC  
+          fp << "confocal lens Cs3= "<< Cs3C << ", Cs5= " << Cs5C << ", df= " << dfC << endl;
+          fp << "confocal lens apert= " << apert1C << " mrad to " << apert2C << " mrad" << endl;
+          fp << "confocal dfa2C= "<< dfa2C << ", dfa2phiC= " << dfa2phiC  
               << ", dfa3C= " << dfa3C << ", dfa3phiC= " << dfa3phiC  << endl;
        }
-       fp << "C Crystal tilt x,y= " << ctiltx << ", " << ctilty << endl;
+       fp << "Crystal tilt x,y= " << ctiltx << ", " << ctilty << endl;
 
        for(  idetect=0; idetect<ndetect; idetect++) {
             if( ADF == collectorMode[idetect]  )
-                fp << "C Detector " << idetect << ", Almin= " << almin[idetect]*1000.0
+                fp << "Detector " << idetect << ", Almin= " << almin[idetect]*1000.0
                     << " mrad, Almax= " << almax[idetect]*1000.0  << " mrad" << endl;
             else if( CONFOCAL == collectorMode[idetect] )
-                fp << "C Detector " << idetect << ", cmin= " << almin[idetect]
+                fp << "Detector " << idetect << ", cmin= " << almin[idetect]
                     << " Angst, cmax= " << almax[idetect] << " Angst." << endl;
             else if( ADF_SEG == collectorMode[idetect] )
-                fp << "C Detector " << idetect << ", Almin= " << almin[idetect]*1000.0
+                fp << "Detector " << idetect << ", Almin= " << almin[idetect]*1000.0
                     << " mrad, Almax= " << almax[idetect]*1000.0  << " mrad, " 
                     << "phimin= " << phiMin[idetect]*180.0/pi << ", phimax= " 
                     << phiMax[idetect]*180.0/pi  << " deg." << endl;
        }
 
-       fp << "C ax= " << ax << " A, by= " << by << " A, cz= " << cz << " A" << endl;
-       fp << "C Number of symmetrical anti-aliasing "
+       fp << "ax= " << ax << " A, by= " << by << " A, cz= " << cz << " A" << endl;
+       fp << "Number of symmetrical anti-aliasing "
             << "beams in probe wave function= " << nbeamp  << endl;
-       fp << "C with a resolution (in Angstroms) = " << res  << endl;
+       fp << "with a resolution (in Angstroms) = " << res  << endl;
        if( lwobble == 1 ) {
-          fp << "C Number of thermal configurations = " << nwobble << endl;
-          fp << "C Source size = " << sourceFWHM << " Ang. (FWHM)" << endl;
+          fp << "Number of thermal configurations = " << nwobble << endl;
+          fp << "Source size = " << sourceFWHM << " Ang. (FWHM)" << endl;
        }
-       if( TRUE == labErr ) {
-          fp << "C  add pi/4 aberr. tuning errors" << endl;
-	   }
        fp << endl;
 
         /*  store params plus min and max */
@@ -815,7 +797,6 @@ int main( int argc, char *argv[ ] )
         fp.close();
 
         /*   save pos. aver. CBED if needed */
-        for(miz=0; miz<nThick; miz++)
         if( lpacbed == TRUE ) {
             myFile.setnpix( 1 );
             nx1 =    nxprobe / 6;
@@ -836,14 +817,7 @@ int main( int argc, char *argv[ ] )
             for( ix2=nx1; ix2<=nx2; ix2++) {
                 iyo = 0;
                 for( iy2=ny1; iy2<=ny2; iy2++) {
-                    for( int miy = 1; miy< nyout; miy++) // N.S. not really necc for fixed probe...
-                    {
-                      pacbedPix[miz*nyout][ix2][iy2] +=pacbedPix[miz*nyout+miy][ix2][iy2];
-                    }
-
-
-
-                    myFile(ixo,iyo++) = scalef * pacbedPix[miz*nyout][ix2][iy2];  // N.S.
+                    myFile(ixo,iyo++) = scalef * pacbedPix[ix2][iy2];
                 }  ixo++;
             }
             rmin0 = myFile.min(0);
@@ -858,10 +832,7 @@ int main( int argc, char *argv[ ] )
             myFile.setParam( pDY, (float) dyp );
             cout << "pos. averg. CBED (unaliased) size " << nxout2 << " x " << nyout2 << " pixels\n"
                 << " and range (arb. units): " << rmin0 << " to " << rmax0 << endl;
-            
-
-            fileout = pacbedFile+toString(miz) + ".tif";
-            if( myFile.write( fileout.c_str(), rmin0, rmax0, aimin, aimax,
+            if( myFile.write( pacbedFile.c_str(), rmin0, rmax0, aimin, aimax,
                 (float) dxp, (float) dyp ) != 1 ) {
                 cout << "Cannot write output file " << pacbedFile << endl;
             }
@@ -895,42 +866,39 @@ int main( int argc, char *argv[ ] )
        fp << "C   output of autostem version " << version << endl;
        fp << "C" << endl;
        fp << "C   nslice= " << nslice << endl;
-       fp << "C deltaz= " << deltaz << ", file in= " << filein  << endl;
-       fp << "C V0= "<< keV << ", Cs3= "<< Cs3<< ", Cs5= "<< Cs5<< ", df= "<< df  << endl;
-       fp << "C Apert= " << apert1*1000.0 << " mrad to " << apert2*1000.0 << " mrad" << endl;
+       fp << "deltaz= " << deltaz << ", file in= " << filein  << endl;
+       fp << "V0= "<< keV << ", Cs3= "<< Cs3<< ", Cs5= "<< Cs5<< ", df= "<< df  << endl;
+       fp << "Apert= " << apert1*1000.0 << " mrad to " << apert2*1000.0 << " mrad" << endl;
        if( doConfocal == TRUE ) {
-          fp << "C confocal lens Cs3= "<< Cs3C<< ", Cs5= "<< Cs5C << ", df= "<< dfC << endl;
-          fp << "C confocal lens apert= " << apert1C << " mrad to " <<apert2C << " mrad" << endl;
-          fp << "C confocal dfa2C= " << dfa2C << ", dfa2phiC= " << dfa2phiC << ", dfa3C= "
+          fp << "confocal lens Cs3= "<< Cs3C<< ", Cs5= "<< Cs5C << ", df= "<< dfC << endl;
+          fp << "confocal lens apert= " << apert1C << " mrad to " <<apert2C << " mrad" << endl;
+          fp << "confocal dfa2C= " << dfa2C << ", dfa2phiC= " << dfa2phiC << ", dfa3C= "
               << dfa3C << ", dfa3phiC= " << dfa3phiC << endl;
        }
-       fp << "C Crystal tilt x,y= " << ctiltx << ", " << ctilty << endl;
+       fp << "Crystal tilt x,y= " << ctiltx << ", " << ctilty << endl;
 
        for(  idetect=0; idetect<ndetect; idetect++) {
             if( ADF == collectorMode[idetect]  )
-                fp << "C Detector " << idetect << ", Almin= " << almin[idetect]*1000.0 
+                fp << "Detector " << idetect << ", Almin= " << almin[idetect]*1000.0 
                    << " mrad, Almax= " << almax[idetect]*1000.0 << " mrad" << endl;
             else if( CONFOCAL == collectorMode[idetect] )
-                fp << "C Detector " <<idetect << ", cmin= " << almin[idetect] 
+                fp << "Detector " <<idetect << ", cmin= " << almin[idetect] 
                     << " Angst, cmax= " << almax[idetect] << " Angst." << endl;
             else if( ADF_SEG == collectorMode[idetect] )
-                fp << "C Detector " << idetect << ", Almin= " << almin[idetect]*1000.0
+                fp << "Detector " << idetect << ", Almin= " << almin[idetect]*1000.0
                     << " mrad, Almax= " << almax[idetect]*1000.0  << " mrad, " 
                     << "phimin= " << phiMin[idetect]*180.0/pi << ", phimax= " 
                     << phiMax[idetect]*180.0/pi  << " deg." << endl;
        }
 
-       fp << "C ax= " << ax << " A, by= " << by << " A, cz= " << cz << " A" << endl;
-       fp << "C Number of symmetrical anti-aliasing "
+       fp << "ax= " << ax << " A, by= " << by << " A, cz= " << cz << " A" << endl;
+       fp << "Number of symmetrical anti-aliasing "
                << "beams in probe wave function= " << nbeamp  << endl;
-       fp << "C with a resolution (in Angstroms) = " << res  << endl;
+       fp << "with a resolution (in Angstroms) = " << res  << endl;
        if( lwobble == 1 ) {
-              fp << "C Number of thermal configurations = " << nwobble << endl;
-              fp << "C Source size = " << sourceFWHM <<" Ang. (FWHM) " << endl;
+              fp << "Number of thermal configurations = " << nwobble << endl;
+              fp << "Source size = " << sourceFWHM <<" Ang. (FWHM) " << endl;
        }
-       if( TRUE == labErr ) {
-          fp << "C  add pi/4 aberr. tuning errors" << endl;
-	   }
        fp << "C     x      y     signal" << endl;
 
        //  remember there is only one thickness for 1D mode

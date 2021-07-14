@@ -187,8 +187,8 @@ ANY OTHER PROGRAM).
 //  (.cpp for normal C++) - its better put other selections in .hpp so
 //  the calling program has more information - use only one .hpp
 //
-//#include "autostem_cuda.hpp"   // header for cuda nvcc version of this class
-#include "autostem_probe.hpp"        // header for C++ version of this class
+#include "autostem_cuda.hpp"   // header for cuda nvcc version of this class
+//#include "autostem.hpp"        // header for C++ version of this class
 
 //   set up cuda things
 #ifdef AST_USE_CUDA
@@ -337,10 +337,10 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
         vectord &almin, vectord &almax, vectori &collectorMode, int ndetect,
         vectord &phiMin, vectord &phiMax,
         float ***pixr, float  **rmin, float **rmax,
-        float ***pacbedPix ) // N.S. changed packbex Pix to 3D array
+        float **pacbedPix )
 {
-    int miz, ix, iy, i, idetect, iwobble, nwobble,
-        nprobes, ip, it, nbeamp, nbeampo, ix2, iy2; // N.S. added additional counter variable
+    int ix, iy, i, idetect, iwobble, nwobble,
+        nprobes, ip, it, nbeamp, nbeampo, ix2, iy2;
 
     float prr, pri, temp, temperature;
 
@@ -770,8 +770,8 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
     trans.init();
 
     if( lpacbed == xTRUE ) {
-        for( i=0; i < (nThick*nyout); i++) for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
-                pacbedPix[i][ix][iy] = 0; // N.S. (incorrectly) adapted to 4D pacbedPix-- not necessary as the values are all set to 0 in autostemcmd ?
+        for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
+                pacbedPix[ix][iy] = 0;
     }
 
 /* ------------- start here for a full image output -------------- */
@@ -854,7 +854,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
                 messageAST( sbuffer, 0 );
 
                 STEMsignals( x, y, nyout, param, multiMode, detect, ndetect, 
-                    ThickSave, nThick, sums, collectorMode, phiMin, phiMax, pacbedPix ); // N.S. passing pacbedPix into STEMsignals for direct modification
+                    ThickSave, nThick, sums, collectorMode, phiMin, phiMax );
                 for( iy=0; iy<nyout; iy++) {
                     if( sums[iy] < totmin ) totmin = sums[iy];
                     if( sums[iy] > totmax ) totmax = sums[iy];
@@ -878,9 +878,6 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
                 /*   sum position averaged CBED if requested 
                      - assume probe still left from stemsignal()  */
 #ifndef AST_USE_CUDA
-
-                // N.S. No longer save final probe...
-                /*
                 if( lpacbed == xTRUE ) {
                     for( iy=0; iy<nyout; iy++) {
                         for( ix2=0; ix2<nxprobe; ix2++)
@@ -890,7 +887,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
                             pacbedPix[ix2][iy2] += (prr*prr + pri*pri);
                        }
                     }
-                } */  /*  end if( lpacbed.... */
+                }   /*  end if( lpacbed.... */
 #elif defined(AST_USE_CUDA)
                 if( lpacbed == xTRUE ) {
                    for( iy=0; iy<nyout; iy++) {
@@ -924,12 +921,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
             }
         }
         if( lpacbed == xTRUE ) {
-          //N.S. invert each cbed -- not really necessary for this application...
-          for(miz = 0; miz < nThick*nyout; miz++)
-          {
-            invert2D(pacbedPix[miz],nxprobe,nyprobe);
-          }
-            //invert2D( pacbedPix, nxprobe, nyprobe );  /*  put zero in middle */
+            invert2D( pacbedPix, nxprobe, nyprobe );  /*  put zero in middle */
          }
 
     /* ------------- start here for 1d line scan ---------------- */
@@ -999,7 +991,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
             }
          
             STEMsignals( x, y, nprobes, param, multiMode, detect, ndetect, 
-                ThickSave, nThick, sums, collectorMode, phiMin, phiMax,pacbedPix );
+                ThickSave, nThick, sums, collectorMode, phiMin, phiMax );
             for( ip=0; ip<nprobes; ip++) {
                 if( sums[ip] < totmin ) totmin = sums[ip];
                 if( sums[ip] > totmax ) totmax = sums[ip];
@@ -1254,7 +1246,7 @@ double autostem::periodic( double pos, double size )
 void autostem::STEMsignals( vectord &x, vectord &y, int npos, vectorf &p,
          int multiMode, double ***detect, int ndetect,
          vectord &ThickSave, int nThick, vectord &sum, vectori &collectorMode,
-         vectord &phiMin, vectord &phiMax, float ***pacbedPix )
+         vectord &phiMin, vectord &phiMax )
 {
     int ix, iy, ixt, iyt, idetect,  ixmid, iymid;
     int istart, na, ip, i, it;
@@ -1470,10 +1462,6 @@ void autostem::STEMsignals( vectord &x, vectord &y, int npos, vectorf &p,
                         sum[ip] += delta;
 
                         k2 = kxp2[ix] + kyp2[iy];
-
-                        pacbedPix[it*npos+ip][ix][iy] += delta; // N.S. save probe intensity at current thickness
-
-
                         phi = atan2( kyp[iy], kxp[ix] );  //  for ADF_SEG detector
 
                         for( idetect=0; idetect<ndetect; idetect++) {

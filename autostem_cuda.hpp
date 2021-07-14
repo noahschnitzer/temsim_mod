@@ -189,7 +189,8 @@ using namespace std;
 #include "newD.hpp"      //  for 2D and 3D arrays
 
 
-//#define AST_USE_CUDA    // define to use nvidia cuda
+//
+#define AST_USE_CUDA    // define to use nvidia cuda
 
 #ifdef AST_USE_CUDA
 #include <cuda.h>
@@ -232,7 +233,7 @@ public:
         vectord &almin, vectord &almax, vectori &collectorMode, int ndetect,
         vectord &phiMin, vectord &phiMax,
         float ***pixr, float  **rmin, float **rmax,
-        float ***pacbedPix ); // N.S.
+        float **pacbedPix );
 
     //  transmission layer 
     void trlayer( const vectorf &x, const vectorf &y, const vectorf &occ,
@@ -295,7 +296,7 @@ private:
         void STEMsignals( vectord &x, vectord &y, int npos, vectorf &p,
             int multiMode, double ***detect, int ndetect,
             vectord &ThickSave, int nThick, vectord &sum, vectori &collectorMode,
-            vectord &phiMin, vectord &phiMax, float ***pacbedPix );
+            vectord &phiMin, vectord &phiMax );
         void invert2D( float** pix, long nx, long ny );    /*   for CBED pix */
 
         /* extra for confocal mode */
