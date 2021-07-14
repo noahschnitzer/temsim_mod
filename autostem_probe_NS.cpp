@@ -339,7 +339,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
         float ***pixr, float  **rmin, float **rmax,
         float ***pacbedPix ) // N.S. changed packbex Pix to 3D array
 {
-    int miz, ix, iy, i, idetect, iwobble, nwobble,
+    int  miz, ix, iy, i, idetect, iwobble, nwobble,
         nprobes, ip, it, nbeamp, nbeampo, ix2, iy2; // N.S. added additional counter variable
 
     float prr, pri, temp, temperature;
@@ -770,7 +770,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
     trans.init();
 
     if( lpacbed == xTRUE ) {
-        for( i=0; i < (nThick*nyout); i++) for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
+        for( i=0; i < (2*nThick*nyout); i++) for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
                 pacbedPix[i][ix][iy] = 0; // N.S. (incorrectly) adapted to 4D pacbedPix-- not necessary as the values are all set to 0 in autostemcmd ?
     }
 
@@ -925,7 +925,7 @@ int autostem::calculate( vectorf &param, int multiMode, int natomin, unsigned lo
         }
         if( lpacbed == xTRUE ) {
           //N.S. invert each cbed -- not really necessary for this application...
-          for(miz = 0; miz < nThick*nyout; miz++)
+          for(miz = 0; miz < 2*nThick*nyout; miz++)
           {
             invert2D(pacbedPix[miz],nxprobe,nyprobe);
           }
@@ -1470,8 +1470,9 @@ void autostem::STEMsignals( vectord &x, vectord &y, int npos, vectorf &p,
                         sum[ip] += delta;
 
                         k2 = kxp2[ix] + kyp2[iy];
-
-                        pacbedPix[it*npos+ip][ix][iy] += delta; // N.S. save probe intensity at current thickness
+                        pacbedPix[2*it*npos+2*ip+0][ix][iy] += prr;
+                        pacbedPix[2*it*npos+2*ip+1][ix][iy] += pri;
+                        //pacbedPix[it*npos+ip][ix][iy] += delta; // N.S. save probe intensity at current thickness
 
 
                         phi = atan2( kyp[iy], kxp[ix] );  //  for ADF_SEG detector

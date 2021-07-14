@@ -186,7 +186,7 @@ int main( int argc, char *argv[ ] )
         pacbedFile;
     const string version = "21-aug-2019 (ejk)";
 
-    int miz, ix, iy, i, idetect, nxout, nyout,
+    int mir, miz, ix, iy, i, idetect, nxout, nyout,
         ncellx, ncelly, ncellz, nwobble, ndetect, ip, nThick, it,
         done, status, multiMode; // N.S.
     int nx, ny, nxprobe, nyprobe, nslice, natom;
@@ -635,9 +635,9 @@ int main( int argc, char *argv[ ] )
            cout << "Cannot do pos. aver. CBED in 1d, exit...." << endl;
            exit( 0 );
         }
-        pacbedPix = new3D<float>(nThick*nyout, nxprobe, nyprobe, "pacbedPix" ); // N.S.
+        pacbedPix = new3D<float>(nThick*nyout*2, nxprobe, nyprobe, "pacbedPix" ); // N.S.
         // prev did pacbedPix = (float***) malloc3D(nThick*nyout, nxprobe, nyprobe, sizeof(float), "pacbedPix" );
-        for( miz=0; miz<nThick*nyout; miz++) for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
+        for( miz=0; miz<nThick*nyout*2; miz++) for( ix=0; ix<nxprobe; ix++) for( iy=0; iy<nyprobe; iy++)
                 pacbedPix[miz][ix][iy] = 0; // N.S.
     } else pacbedPix = NULL;
 
@@ -816,6 +816,7 @@ int main( int argc, char *argv[ ] )
 
         /*   save pos. aver. CBED if needed */
         for(miz=0; miz<nThick; miz++)
+          for(mir=0; mir<2; mir++)
         if( lpacbed == TRUE ) {
             myFile.setnpix( 1 );
             nx1 =    nxprobe / 6;
@@ -836,14 +837,15 @@ int main( int argc, char *argv[ ] )
             for( ix2=nx1; ix2<=nx2; ix2++) {
                 iyo = 0;
                 for( iy2=ny1; iy2<=ny2; iy2++) {
-                    for( int miy = 1; miy< nyout; miy++) // N.S. not really necc for fixed probe...
+                    /*for( int miy = 1; miy< nyout; miy++) // N.S. not really necc for fixed probe...
                     {
                       pacbedPix[miz*nyout][ix2][iy2] +=pacbedPix[miz*nyout+miy][ix2][iy2];
-                    }
+                    }*/
 
 
 
-                    myFile(ixo,iyo++) = scalef * pacbedPix[miz*nyout][ix2][iy2];  // N.S.
+                    //myFile(ixo,iyo++) = scalef * pacbedPix[miz*nyout+mir][ix2][iy2];  // N.S.
+                    myFile(ixo,iyo++) = scalef * pacbedPix[2*miz*nyout+mir][ix2][iy2];  // N.S.
                 }  ixo++;
             }
             rmin0 = myFile.min(0);
@@ -860,7 +862,7 @@ int main( int argc, char *argv[ ] )
                 << " and range (arb. units): " << rmin0 << " to " << rmax0 << endl;
             
 
-            fileout = pacbedFile+toString(miz) + ".tif";
+            fileout = pacbedFile+"__"+toString(miz)+"__"+toString(mir) + "__.tif";
             if( myFile.write( fileout.c_str(), rmin0, rmax0, aimin, aimax,
                 (float) dxp, (float) dyp ) != 1 ) {
                 cout << "Cannot write output file " << pacbedFile << endl;
